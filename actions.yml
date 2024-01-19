@@ -1,0 +1,22 @@
+# Define your actions below.
+# Actions should have no spaces in the name.
+
+
+- name: Job finishes successfully
+  enabled: true
+
+  trigger_when:
+    - render_job_complete
+
+  steps:
+    - type: telegram
+      recipient: 
+      message: "{}"
+
+    - type: email
+      subject: 
+      message: 
+
+
+- name: Dummy 2nd Action
+  enabled: false

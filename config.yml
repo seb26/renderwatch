@@ -1,0 +1,10 @@
+# Config
+renderwatch:
+  api_poll_time: 2
+
+# Step types
+steps:
+  - type: telegram
+    api_key: xxx
+
+  - type: email
