@@ -1,0 +1,14 @@
+# Schema for actions files
+# See: https://github.com/23andMe/Yamale
+
+actions: list(include('action'))
+---
+action:
+  name: str()
+  enabled: bool()
+  triggered_by: list(str())
+  steps: list(include('step'))
+---
+step: map(include('step_contents'), key=str())
+---
+step_contents: map(key=str())

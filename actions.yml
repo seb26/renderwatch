@@ -2,21 +2,34 @@
 # Actions should have no spaces in the name.
 
 
-- name: Job finishes successfully
-  enabled: true
+actions:
+  - name: Job finishes successfully
+    enabled: true
 
-  trigger_when:
-    - render_job_complete
+    triggered_by:
+      - render_job_completed
 
-  steps:
-    - type: telegram
-      recipient: 
-      message: "{}"
+    steps:
+      - telegram:
+          chat_id: "telegram chat ID"
+          message: "message #1"
 
-    - type: email
-      subject: 
-      message: 
+      - telegram:
+          chat_id: "telegram chat ID secondperson"
+          message: "message #2!"
+
+      - email:
+          subject: "subject"
+          to: "to"
+          message: "email body"
 
 
-- name: Dummy 2nd Action
-  enabled: false
+  - name: Dummy 2nd Action that fails
+    enabled: false
+
+    triggered_by:
+      - render_job_hahaha
+
+    steps:
+      - other_custom_step:
+          param: value

@@ -9,5 +9,8 @@ def log(text, *args):
 resolve = davinci.Resolve()
 
 while True:
-	log(resolve.project.render_status("bd390c32-7a4e-4ae3-b5d8-0eacfb56728d"))
-	time.sleep(0.5)
+	project = resolve.project
+	for job in project.render_jobs:
+		jid = job['JobId']
+		log(job['RenderJobName'], resolve.project.render_status(jid))
+	time.sleep(2)
