@@ -6,46 +6,54 @@
 * Events to add
 	* Loss of Resolve API -- may indicate a program crash or program closed during operation
 
-* Implement Actions
+    * Consider if Events implementation needs to be Asynchronous
+
+    * Add an Output Filepath AND Output Directory as a quick param for Actions to use in their messaging
+    	* Needs to handle Single clip where there is a Single file path, but also the ` and more` suffix that Resolve uses to indicate multiple clips
 
 
-* Events need to interpret the result of dictdiffer into a practical result - aka "keyvalue change for JobStatus from Rendering to Complete" needs to be interpreted in words as 'Job Completed'
-	* Also determine an Elapsed time - take job completed timestamp and minus from earliest(job history) timestamp
+x Implement Actions backend
 
-* Convert Time Interval for polling the Resolve API, into a parameter with a reasonable default
+* Implement these Action Steps
+    * Telegram
+    * Email
+    * Trigger a shell command or script
+    	* Quickest way to allow a file transfer (e.g. Rsync), and so that it takes place as a separate process where user can control it independent of the daemon
+		* And without having a GUI that I have to manage
+
+    * Need some default messaging or statuses - User will want to customise but also they won't want to for Render Status Change! Have a default string that contains exactly what happened in nice words (similar to CLI logging) and put that as a template like `{status_change}`
+
+* Remove DIY logging and implement Python Logging library
+
+* Implement config
+    * Should have a Yamale schema but make it quite flexible at first
+    * Add option for Time Interval for polling the Resolve API
+
+* Feature idea - Also determine an Elapsed time? - take job completed timestamp and minus from earliest(job history) timestamp
 
 * Change RenderJob update() to be Asynchronous
 	* This will help a follow-up API call to be made, if we get surprising info from an API call and need to make another one
 	* One important reason - Allow a follow up call for Render Statuses, if one of the Renders hits 'Completed' - we will then learn immediately if another job was queued straight after
 
-* A way to provide the filepaths
-	* Test if output file ends with " and more" - that is Resolve API's wonderful way of providing you only the first clip in a job of Individual clips that clearly has way more clips than that
-	* If a single clip, provided completed filepath
-	* Otherwise perhaps display to user only the Output Folder
-
-* Respond to events
-
-	* Notification functions:
-		* Email
-		* Twitter
-		* Logging in the Daemon
-
-
-	* Trigger a shell command or script
-		* Quickest way to allow a file transfer (e.g. Rsync), and so that it takes place as a separate process where user can control it independent of the daemon
-		* And without having a GUI that I have to manage
-
-
+* Perform another API poll after receiving news that a job has completed
+    * Might require Asynchronicity since that request for another API poll will come from inside update()
 
 * FAILED jobs
-	* Workaround for issue where Failed Renders are not visible to API until OK dialog is dismissed
-	* Consider using Osascript to send Fn+Return keystroke to 'OK'
-	* Consider watching ~/App Support/BMD/Resolve/davinci_resolve.log for IO errors
-		* Will this catch all types of errors?
-		* Maybe it's enough to focus the screen and therefore force the API to respond
+    * Current decision:
+    	* In default program installation, Failed event notifications are available but are not instantaneous, a user must interact with the screen and then the notification fires
+        * Cause: Issue in DVR where Failed Renders are not visible to API or Console until OK dialog is dismissed
+        * With an Optional component, Failed Event notification is available semi-instantaneously, but user must enable a program to have access to System Events
+
+    * Optional component that works around this Issue:
+    	* Consider watching ~/App Support/BMD/Resolve/davinci_resolve.log for IO errors
+    		* Will this catch all types of errors?
+    		* Maybe it's enough to focus the screen and therefore force the API to respond
+            * Better than sending Keystrokes to a screen blindly at some interval
+    	* Consider using Osascript to send Fn+Return keystroke to 'OK'
+        	* Be smart - after that keystroke sent, watch for an Failed event and if there is none in a reasonable time period, be cautious about how many further keystrokes you send 
 
 
-## R&D
+## R&D within DaVinci Resolve
 x Do a test to see if you can poll JobStatus every 0.5sec - how frequently does the API give you a CompletionPercentage?
 	* Done, it seems to only report 0/25/50/75/100% intervals and the time remaining in miliseconds is a big whole number rounded to hundreds
 
@@ -55,6 +63,9 @@ x Do a test to see if you can poll JobStatus every 0.5sec - how frequently does 
 	* This means it may be helpful to do another poll immediately after receiving news that a job has Completed, in order to be more responsive about subsequent jobs
 
 * Test what jobs are like when they are REMOTE RENDERING
+
+* Test what jobs are like when they have ADDITIONAL VIDEO OUTPUTS (aka main render is ProRes and additional output of H264)
+    * You can have multiple!!!
 
 * Test what jobs are like when they FAIL
 

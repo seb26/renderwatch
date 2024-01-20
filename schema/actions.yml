@@ -6,7 +6,7 @@ actions: list(include('action'))
 action:
   name: str()
   enabled: bool()
-  triggered_by: list(str())
+  triggered_by: any( list(str()), str() )
   steps: list(include('step'))
 ---
 step: map(include('step_contents'), key=str())

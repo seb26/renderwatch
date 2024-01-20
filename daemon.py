@@ -1,5 +1,6 @@
 # builtins
 import datetime
+import itertools
 from functools import partial
 import pprint
 import time
@@ -14,7 +15,7 @@ import yaml
 import yamale
 
 # renderwatch
-from renderwatch import steps
+from renderwatch.action_steps import *
 from renderwatch.utilities import *
 
 # Globals
@@ -26,48 +27,58 @@ RENDERWATCH_DEFAULT_ACTIONS_FILEPATH = 'actions.yml'
 class RenderWatchException(Exception):
     pass
 
-class RenderWatchActions_Exception(Exception):
-    pass
-
-class RenderWatchActions_Invalid(RenderWatchActions_Exception):
-    def __init__(self, value, context, filepath):
-        try:
-            context_display = f"\nContext: \"{str(context)[:64]}..." 
-        except:
-            context_display = None
-        super().__init__(f"This action definition is invalid or missing a value: \"{value}\"{context_display}\nIn file: {filepath}")
-    pass
-
-class RenderWatchActions_InvalidTrigger(RenderWatchActions_Exception):
-    def __init__(self, value, context, filepath):
-        super().__init__(f"This trigger is not a valid trigger - check it or see help: \"{value}\"{context_display}\nIn file: {filepath}")
-    pass
-
 # Objects
 class Action:
-    def __init__(self, definition, actions_filepath=False):
-        # Type checking
-        if not 'name' in definition:
-            raise RenderWatchActions_Invalid('name', definition, actions_filepath)
-        if not 'enabled' in definition:
-            raise RenderWatchActions_Invalid('enabled', definition, actions_filepath)
-        if not 'triggered_by' in definition:
-            raise RenderWatchActions_Invalid('triggered_by', definition, actions_filepath)
-        else:
-            if not isinstance(definition['triggered_by'], dict):
-                raise RenderWatchActions_Invalid('triggered_by', definition, actions_filepath)
-
+    def __init__(self, context, definition, actions_filepath=False):
         self.name = definition['name']
-        self.enabled = definition['enabled']
+        self.enabled = definition['enabled'] if 'enabled' in definition else True
         self.triggers = set()
+        self.steps = set()
 
-        for trigger in definition['triggered_by']:
-        	# Check each event is valid
-            if trigger in RenderEvents.__events__:
+        # renderwatch
+        self.context = context
+
+        # Check if user specified a single trigger, make it a list for processing
+        if isinstance(definition['triggered_by'], str):
+            triggers = list(definition['triggered_by'])
+        else:
+            triggers = definition['triggered_by']
+        for trigger in triggers:
+            # Check each event is valid
+            if trigger in self.context.event_resolve.__events__:
                 self.triggers.add(trigger)
             else:
-                raise RenderWatchActions_InvalidTrigger(trigger, definition, actions_filepath)
+                log(f"Action(): \"{self.name}\": '{trigger}' is not a recognised trigger. Check spelling or help for list of triggers.")
+        # Account for our YAML data layout, and index each step
+        try:
+            step_count = itertools.count(1)
+            step_entries = [ (next(step_count), k, v) for step in definition['steps'] for k, v in step.items() ]
+        except Exception as e:
+            log(f"Action(): \"{self.name}\": could not parse steps. See below exception:")
+            log(e)
+        # Create step callbacks so that the Steps can fire
+        # We must apply to all triggers, since users are allowed to specify multiple triggers for a same set of steps
+        for trigger in self.triggers:
+            for index, step, settings in step_entries:
+                # Test if a recognised step
+                if step in ActionSteps.__steps__:
+                    # Collect data to provide to the downstream functions
+                    data = { 'trigger': trigger, 'index': index, 'settings': settings, 'step': step }
+                    step_object = ActionStep(self, data=data)
+                    # Now we have a valid callback object
+                    # Let's register it officially so that it can be executed with the event.
+                    handler = getattr(self.context.event_resolve, trigger)
+                    handler += step_object.callback
+                else:
+                    log(f"Action(): \"{self.name}\": `{step}` is not a recognised step. Check spelling or help for list of steps.")
+                    continue
+        # User didn't specify any valid steps
+        if len(self.steps) == 0:
+            log(f"Action(): \"{self.name}\": there were no (valid) steps for this action.")
+            return
 
+    def __str__(self):
+        return self.name
 
 
 class RenderJob:
@@ -140,30 +151,32 @@ class RenderJob:
                     old, new = diff['change']['JobStatus']
                     data['JobStatus'] = new
                     if old == 'Ready' and new == 'Rendering':
-                        events.handler.render_job_started(self, data)
+                        # print('xDEBUGx')
+                        # pp(renderwatch.event_resolve.render_job_started.__dict__)
+                        renderwatch.event_resolve.render_job_started(self, data)
                         event_fired = True
                     elif old == 'Rendering' and new == 'Complete':
-                        events.handler.render_job_completed(self, data)
+                        renderwatch.event_resolve.render_job_completed(self, data)
                         event_fired = True
                     elif old == 'Rendering' and new == 'Cancelled':
-                        events.handler.render_job_cancelled(self, data)
+                        renderwatch.event_resolve.render_job_cancelled(self, data)
                         event_fired = True
                     elif old and new == 'Ready':
-                        events.handler.render_job_reset(self, data)
+                        renderwatch.event_resolve.render_job_reset(self, data)
                         event_fired = True
                     elif old == 'Rendering' and new == 'Failed':
-                        events.handler.render_job_failed(self, data)
+                        renderwatch.event_resolve.render_job_failed(self, data)
                         event_fired = True
                 if not event_fired:
                     # No status change, but just an update to Progress
                     if 'CompletionPercentage' in diff['change']:
                         # Don't report false or zeros
                         if diff['change']['CompletionPercentage'][1]:
-                            events.handler.render_job_progress(self, data)
+                            renderwatch.event_resolve.render_job_progress(self, data)
                             event_fired = True
                 if not event_fired:
                     # All other unrecognised changes
-                    events.handler.render_job_change_misc(self, data)
+                    renderwatch.event_resolve.render_job_change_misc(self, data)
                 # Save a new history entry
                 self.history[timestamp] = _create_history_entry()
                 return True
@@ -177,7 +190,7 @@ class RenderJob:
         return self.name
 
 # Events
-class RenderEvents(Events):
+class ResolveEvents(Events):
     __events__ = (
         'api_conn_initial_success',
         'api_conn_lost',
@@ -197,10 +210,22 @@ class RenderEvents(Events):
         'render_job_reset',
     )
 
+class InternalEvents(Events):
+    __events__ = (
+        'action_step_fired'
+    )
+
 # Program
 class RenderWatch:
     
-    def __init__(self, actions_filepath=RENDERWATCH_DEFAULT_ACTIONS_FILEPATH):
+    def __init__(self,
+        config_filepath=RENDERWATCH_DEFAULT_CONFIG_FILEPATH,
+        actions_filepath=RENDERWATCH_DEFAULT_ACTIONS_FILEPATH,
+	):
+        # Create event handlers
+        self.event_resolve = ResolveEvents()
+        self.event_internal = InternalEvents()
+
         self.resolve = False
         self.current_project = { }
         self.current_db = False
@@ -209,38 +234,41 @@ class RenderWatch:
         self.render_jobs_first_run = True
 
         # Parse config
-        stream = open(RENDERWATCH_DEFAULT_CONFIG_FILEPATH, 'r')
+        stream = open(config_filepath, 'r')
         config = yaml.safe_load(stream)
 
         # Parse actions
-        self.actions = set()
+        self.actions = []
         self.read_actions(actions_filepath)
 
-    def read_actions(self, filepath=RENDERWATCH_DEFAULT_ACTIONS_FILEPATH):
+    def read_actions(self, actions_filepath=RENDERWATCH_DEFAULT_ACTIONS_FILEPATH):
         # Validation schema
         actions_schema = yamale.make_schema('./schema/actions.yml')
         # Open actions
-        actions = yamale.make_data(filepath)
+        actions_raw = yamale.make_data(actions_filepath)
         # Validate
         try:
-            yamale.validate(actions_schema, actions)
+            yamale.validate(actions_schema, actions_raw)
+            log('Actions validated OK 👍 File:', actions_filepath)
         except Exception as e:
             log(e)
             return False
 
-        # Create action objects
-        for action in actions:
-            try:
-                obj = Action(action, filepath)
-                self.actions.add(obj)
-            except Exception as e:
-                log(e)
-                continue
-
-        # Debug
-        pp(self.actions)
-
-
+        # Workaround Yamale which wraps its parsing in a list and a tuple
+        # https://github.com/23andMe/Yamale/blob/master/yamale/yamale.py:32 @ ca60752
+        actions = False
+        if isinstance(actions_raw, list):
+            if len(actions_raw) > 0:
+                if isinstance(actions_raw[0], tuple):
+                    if actions_raw[0][0] is not None:
+                        # And then the heading for actions, which is part of our yaml schema just for readability
+                        if 'actions' in actions_raw[0][0]:
+                            actions = actions_raw[0][0]['actions']
+        if not actions:
+            log('Actions was unreadable:', actions_raw)
+            return False
+        for definition in actions:
+            self.actions.append( Action(self, definition) )
 
     def _get_resolve(self):
         try:
@@ -258,26 +286,26 @@ class RenderWatch:
                 if Resolve.project.name != self.current_project.name:
                     # Project has changed - only coming from name.
                     self.project_was_changed = True
-                    events.handler.project_change(Resolve.project, data)
+                    self.event_resolve.project_change(Resolve.project, data)
                     self.current_project = Resolve.project
                     self.clear_render_jobs()
             else:
                 # First time load of a project
                 self.current_project = Resolve.project
                 self.project_was_changed = False
-                events.handler.project_onload(Resolve.project, data)
+                self.event_resolve.project_onload(Resolve.project, data)
             data = Resolve.project_manager.db
             if self.current_db:
                 if Resolve.project_manager.db != self.current_db:
                     # Database has changed
                     self.db_was_changed = True
-                    events.handler.db_change(Resolve, data)
+                    self.event_resolve.db_change(Resolve, data)
                     self.current_db = Resolve.project_manager.db
                     self.clear_render_jobs()
             else:
                 # First time load of a db
                 self.current_db = Resolve.project_manager.db
-                events.handler.db_onload(Resolve, data)
+                self.event_resolve.db_onload(Resolve, data)
                 self.db_was_changed = False
             # Different jobs behaviour if there was a change
             if self.project_was_changed or self.db_was_changed:
@@ -312,9 +340,9 @@ class RenderWatch:
             # Create a new instance so we can track history of job status by time
             if not jid in self.render_jobs:
                 if self.render_jobs_first_run:
-                    events.handler.render_job_onload(self)
+                    self.event_resolve.render_job_onload('Job ' + jid)
                 else:
-                    events.handler.render_job_new(self)
+                    self.event_resolve.render_job_new('Job ' + jid)
                 # Save the job
                 self.render_jobs[jid] = RenderJob(job_dump, render_status_info, time_collected)
             else:
@@ -326,7 +354,7 @@ class RenderWatch:
         delete_these_jobs = []
         for jid, job in self.render_jobs.items():
             if job.last_touched < timestamp:
-                events.handler.render_job_removed(self)
+                self.event_resolve.render_job_removed()
                 # Mark for deletion
                 delete_these_jobs.append(jid)
         # Apply deletion from our records
@@ -339,29 +367,25 @@ if __name__ == '__main__':
     log('Python:', sys.version)
     log('Resolve API being polled every (seconds):', RENDERWATCH_DEFAULT_API_POLL_TIME)
     renderwatch = RenderWatch()
-    events = RenderEvents()
 
     # TODO: Expand into proper logging with levels
     # Attach logging to every event
-    def log_event(event_name, obj, data):
-    	log(f"({event_name})", obj, '- data:', data)
-    for event_name in RenderEvents.__events__:
-        setattr(
-            events,
-            event_name,
-            partial(
-                log_event,
-                event_name
-            )
-        )
+    def log_event(event_name, *args, data=None):
+        log(f"({event_name})", *args, '- data:', data)
+    # Logging for Resolve render job events
+    for event_name in renderwatch.event_resolve.__events__:
+        handler = getattr(renderwatch.event_resolve, event_name)
+        handler += partial(log_event, event_name)
+    # Internal program logging
+    for event_name in renderwatch.event_internal.__events__:
+        handler = getattr(renderwatch.event_internal, event_name)
+        handler += partial(log_event, event_name)
 
 
     while True:
-        """
         if renderwatch._get_resolve():
             renderwatch.update_render_jobs()
             pass
-        """
 
         time.sleep(RENDERWATCH_DEFAULT_API_POLL_TIME)
             
