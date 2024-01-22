@@ -14,6 +14,8 @@
 
 x Implement Actions backend
 
+* Allow Actions file to be modified - watch for OS filesystem changes and reload
+
 * Implement these Action Steps
     * Telegram
     * Email

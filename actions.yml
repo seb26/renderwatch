@@ -2,32 +2,40 @@
 #
 # Actions must follow the below structure:
 # - name: string
-#  	enabled: true or false
+#   enabled: true or false
 #   triggered_by:
 #     - string
-#  	steps:
+#   steps:
 #     - step_type:
 #         step_params: here
 #
 # Define your actions below.
 
 actions:
-  - name: Job finishes successfully
+  - name: Job starts
     enabled: true
-
     triggered_by:
-      - render_job_completed
-
+      - render_job_started
     steps:
       - telegram:
-          chat_id: "telegram chat ID"
-          message: "message #1"
+          chat_id: -4154302054
+          message: "🔂 {name}: {timeline_name} - {status} @ {timestamp_short}\nETA: {time_elapsed}"
 
+  - name: Job finishes OK
+    enabled: true
+    triggered_by:
+      - render_job_completed
+    steps:
       - telegram:
-          chat_id: "telegram chat ID secondperson"
-          message: "message #2!"
+          chat_id: -4154302054
+          message: "✅ {name}: {timeline_name} - {status} @ {timestamp_short}\nRender time was: {time_elapsed}"
 
-      - email:
-          subject: "subject"
-          to: "to"
-          message: "email body"
+  - name: Job fails
+    enabled: true
+    triggered_by:
+      - render_job_failed
+      - render_job_cancelled
+    steps:
+      - telegram:
+          chat_id: -4154302054
+          message: "⚠️ {name}: {timeline_name} - {status} @ {timestamp_short}\nJob completion was: {completion_percent}"

@@ -2,6 +2,7 @@
 import datetime
 import itertools
 from functools import partial
+import locale
 import pprint
 import time
 import sys
@@ -10,6 +11,7 @@ import uuid
 # pip libraries
 import dictdiffer
 from events import Events
+import humanize
 from pydavinci import davinci
 import yaml
 import yamale
@@ -22,10 +24,6 @@ from renderwatch.utilities import *
 RENDERWATCH_DEFAULT_API_POLL_TIME = 2 
 RENDERWATCH_DEFAULT_CONFIG_FILEPATH = 'config.yml'
 RENDERWATCH_DEFAULT_ACTIONS_FILEPATH = 'actions.yml'
-
-# Exceptions
-class RenderWatchException(Exception):
-    pass
 
 # Objects
 class Action:
@@ -59,18 +57,20 @@ class Action:
         # Create step callbacks so that the Steps can fire
         # We must apply to all triggers, since users are allowed to specify multiple triggers for a same set of steps
         for trigger in self.triggers:
-            for index, step, settings in step_entries:
+            for index, step_type, settings in step_entries:
                 # Test if a recognised step
-                if step in ActionSteps.__steps__:
+                if step_type in ActionSteps.__steps__:
                     # Collect data to provide to the downstream functions
-                    data = { 'trigger': trigger, 'index': index, 'settings': settings, 'step': step }
-                    step_object = ActionStep(self, data=data)
+                    data = { 'trigger': trigger, 'index': index, 'settings': settings, 'step_type': step_type }
+                    step_object = ActionStep(action=self, data=data)
+                    # Save it
+                    self.steps.add(step_object)
                     # Now we have a valid callback object
                     # Let's register it officially so that it can be executed with the event.
                     handler = getattr(self.context.event_resolve, trigger)
                     handler += step_object.callback
                 else:
-                    log(f"Action(): \"{self.name}\": `{step}` is not a recognised step. Check spelling or help for list of steps.")
+                    log(f"Action(): \"{self.name}\": `{step_type}` is not a recognised step. Check spelling or help for list of steps.")
                     continue
         # User didn't specify any valid steps
         if len(self.steps) == 0:
@@ -80,29 +80,31 @@ class Action:
     def __str__(self):
         return self.name
 
-
 class RenderJob:
     def __init__(self, job_dump, render_status_info, time_collected):
         time_collected = datetime.datetime.now()
+        self.last_touched = False
+
         jid = job_dump['JobId']
         self.id = jid
-        self.history = {}
-        self.last_touched = False
+        self.history = []
+
+        # Defaults
+        self.name = None
+        self.target_directory = None
+        self.timeline_name = None
+        self.status = None
+        self.completion_percent = None
+        self.time_elapsed = None
+        self.time_remaining = None
 
         # Run first time
         self.update(job_dump, render_status_info, time_collected)
 
-    def _set_own_attribs(self, job_dump):
-        # Set some parameters
-        self.name = job_dump['RenderJobName']
-        self.target_directory = job_dump['TargetDir']
-        self.timeline_name = job_dump['TimelineName']
-        self.status = job_dump['JobStatus']
-        self.completion_percent = job_dump['CompletionPercentage']
-
     def update(self, job_dump, render_status_info, time_collected):
         # Convert to integer for internal use
         timestamp = int(time_collected.timestamp())
+        self.timestamp_short = time_collected.strftime('%H:%M:%S')
         # Add some defaults, to make comparing new values easier
         job_dump.update({
             'TimeTakenToRenderInMs': False,
@@ -113,26 +115,42 @@ class RenderJob:
         # Combine render_status into the job_dump, since it has unique k/vs
         job_dump.update(render_status_info)
         # Create a new history entry marked by time
-        def _create_history_entry():
-            return {
+        def _create_history_entry(timestamp):
+            obj = {
                 'id': job_dump['JobId'],
                 'time': time_collected,
                 'job': job_dump,
             }
+            self.history.append( (timestamp, obj ) )
+            # TODO - NEED TO DELETE OLD HISTORY ENTRIES !!!!!!!!!*********
+            return 
         # Set/overwrite attribs with the latest job dump info
-        self._set_own_attribs(job_dump)
+        self.name = job_dump['RenderJobName']
+        self.target_directory = job_dump['TargetDir']
+        self.timeline_name = job_dump['TimelineName']
+        self.status = job_dump['JobStatus']
+        # Interpret these values a bit
+        if job_dump['CompletionPercentage']:
+            self.completion_percent = str(job_dump['CompletionPercentage']) + '%'
+        if job_dump['TimeTakenToRenderInMs']:
+            amount = datetime.timedelta(milliseconds=job_dump['TimeTakenToRenderInMs'])
+            self.time_elapsed = humanize.precisedelta(time_collected, suppress=['days'])
+        if job_dump['EstimatedTimeRemainingInMs']:
+            amount = datetime.timedelta(milliseconds=job_dump['EstimatedTimeRemainingInMs'])
+            self.time_remaining = humanize.precisedelta(time_collected, suppress=['days'])
         # Mark that we checked this
         self.last_touched = timestamp
         # If first record of this job
         if len(self.history) == 0:
-            self.history[timestamp] = _create_history_entry()
+            _create_history_entry(timestamp)
             return True
         else:
             # Familiar job
             # So check if the job dump contents has changed in any way
             latest = max(self.history)
-            latest_job = self.history[latest]['job']
+            latest_job = latest[1]['job']
             if latest_job == job_dump:
+                # Nothing changed - don't do any further work
                 return False
             else:
                 # It did change!
@@ -143,48 +161,50 @@ class RenderJob:
                 diff = { 'add': {}, 'change': {}, 'remove': {} }
                 for d_type, param, values in diff_result:
                     diff[d_type].update( { param: values })
-                event_fired = False
                 # First check if any of the other vars changed at all, at this time
                 data = { a:diff['change'][a][1] for a in diff['change'] if a != 'JobStatus' }
                 # Then continue identification of what happened
+                event_fired = False
                 if 'JobStatus' in diff['change']:
                     old, new = diff['change']['JobStatus']
-                    data['JobStatus'] = new
+                    # Update internal status
+                    self.status = new
                     if old == 'Ready' and new == 'Rendering':
-                        # print('xDEBUGx')
-                        # pp(renderwatch.event_resolve.render_job_started.__dict__)
-                        renderwatch.event_resolve.render_job_started(self, data)
+                        renderwatch.event_resolve.render_job_started(job=self)
+                        event_fired = True
+                    elif old == 'Complete' and new == 'Rendering':
+                        renderwatch.event_resolve.render_job_started(job=self)
                         event_fired = True
                     elif old == 'Rendering' and new == 'Complete':
-                        renderwatch.event_resolve.render_job_completed(self, data)
+                        renderwatch.event_resolve.render_job_completed(job=self)
                         event_fired = True
                     elif old == 'Rendering' and new == 'Cancelled':
-                        renderwatch.event_resolve.render_job_cancelled(self, data)
+                        renderwatch.event_resolve.render_job_cancelled(job=self)
                         event_fired = True
                     elif old and new == 'Ready':
-                        renderwatch.event_resolve.render_job_reset(self, data)
+                        renderwatch.event_resolve.render_job_reset(job=self)
                         event_fired = True
                     elif old == 'Rendering' and new == 'Failed':
-                        renderwatch.event_resolve.render_job_failed(self, data)
+                        renderwatch.event_resolve.render_job_failed(job=self)
                         event_fired = True
                 if not event_fired:
                     # No status change, but just an update to Progress
                     if 'CompletionPercentage' in diff['change']:
                         # Don't report false or zeros
                         if diff['change']['CompletionPercentage'][1]:
-                            renderwatch.event_resolve.render_job_progress(self, data)
+                            self.completion_percent = diff['change']['CompletionPercentage'][1]
+                            renderwatch.event_resolve.render_job_progress(job=self)
                             event_fired = True
                 if not event_fired:
                     # All other unrecognised changes
-                    renderwatch.event_resolve.render_job_change_misc(self, data)
+                    renderwatch.event_resolve.render_job_change_misc(job=self)
                 # Save a new history entry
-                self.history[timestamp] = _create_history_entry()
+                _create_history_entry(timestamp)
                 return True
 
     def dump(self):
         # Return the most recent data dump about the job
-        latest = max(self.history)
-        return self.history[latest]
+        return max(self.history)
 
     def __str__(self):
         return self.name
@@ -212,7 +232,8 @@ class ResolveEvents(Events):
 
 class InternalEvents(Events):
     __events__ = (
-        'action_step_fired'
+        'action_step_fired',
+        'action_step_telegram_message_sent',
     )
 
 # Program
@@ -220,8 +241,7 @@ class RenderWatch:
     
     def __init__(self,
         config_filepath=RENDERWATCH_DEFAULT_CONFIG_FILEPATH,
-        actions_filepath=RENDERWATCH_DEFAULT_ACTIONS_FILEPATH,
-	):
+        actions_filepath=RENDERWATCH_DEFAULT_ACTIONS_FILEPATH ):
         # Create event handlers
         self.event_resolve = ResolveEvents()
         self.event_internal = InternalEvents()
@@ -236,6 +256,7 @@ class RenderWatch:
         # Parse config
         stream = open(config_filepath, 'r')
         config = yaml.safe_load(stream)
+        self.config = config
 
         # Parse actions
         self.actions = []
@@ -245,7 +266,8 @@ class RenderWatch:
         # Validation schema
         actions_schema = yamale.make_schema('./schema/actions.yml')
         # Open actions
-        actions_raw = yamale.make_data(actions_filepath)
+        actions_raw_text = open(actions_filepath, 'r', encoding='utf-8').read()
+        actions_raw = yamale.make_data(content=actions_raw_text)
         # Validate
         try:
             yamale.validate(actions_schema, actions_raw)
@@ -253,7 +275,6 @@ class RenderWatch:
         except Exception as e:
             log(e)
             return False
-
         # Workaround Yamale which wraps its parsing in a list and a tuple
         # https://github.com/23andMe/Yamale/blob/master/yamale/yamale.py:32 @ ca60752
         actions = False
@@ -265,8 +286,9 @@ class RenderWatch:
                         if 'actions' in actions_raw[0][0]:
                             actions = actions_raw[0][0]['actions']
         if not actions:
-            log('Actions was unreadable:', actions_raw)
+            log('Actions block was unreadable:', actions_raw)
             return False
+        # Finish by creating new Action objects
         for definition in actions:
             self.actions.append( Action(self, definition) )
 
@@ -319,7 +341,6 @@ class RenderWatch:
 
     def clear_render_jobs(self):
         self.render_jobs = {}
-        log('Cleared render jobs')
 
     def update_render_jobs(self):
         # Query the API
@@ -339,12 +360,12 @@ class RenderWatch:
             render_status_info = self.resolve.project.render_status(jid)
             # Create a new instance so we can track history of job status by time
             if not jid in self.render_jobs:
-                if self.render_jobs_first_run:
-                    self.event_resolve.render_job_onload('Job ' + jid)
-                else:
-                    self.event_resolve.render_job_new('Job ' + jid)
                 # Save the job
                 self.render_jobs[jid] = RenderJob(job_dump, render_status_info, time_collected)
+                if self.render_jobs_first_run:
+                    self.event_resolve.render_job_onload(job=self.render_jobs[jid])
+                else:
+                    self.event_resolve.render_job_new(job=self.render_jobs[jid])
             else:
                 # Already a job under this ID - update its history
                 self.render_jobs[jid].update(job_dump, render_status_info, time_collected)
@@ -364,14 +385,15 @@ class RenderWatch:
 # Daemon
 if __name__ == '__main__':
     log('Welcome.')
-    log('Python:', sys.version)
+    log('Python:', sys.version, locale.getdefaultlocale())
     log('Resolve API being polled every (seconds):', RENDERWATCH_DEFAULT_API_POLL_TIME)
+
     renderwatch = RenderWatch()
 
     # TODO: Expand into proper logging with levels
     # Attach logging to every event
-    def log_event(event_name, *args, data=None):
-        log(f"({event_name})", *args, '- data:', data)
+    def log_event(event_name, data=None, *args, **kwargs):
+        log(f"({event_name})", 'args:', args, 'kwargs:', kwargs, 'data:', data)
     # Logging for Resolve render job events
     for event_name in renderwatch.event_resolve.__events__:
         handler = getattr(renderwatch.event_resolve, event_name)
@@ -387,6 +409,5 @@ if __name__ == '__main__':
             renderwatch.update_render_jobs()
             pass
 
-        time.sleep(RENDERWATCH_DEFAULT_API_POLL_TIME)
+        time.sleep(renderwatch.config['renderwatch_daemon']['API_poll_time'])
             
-
