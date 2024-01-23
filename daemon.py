@@ -292,52 +292,66 @@ class RenderWatch:
         for definition in actions:
             self.actions.append( Action(self, definition) )
 
-    def _get_resolve(self):
+    def _connect_resolve(self):
         try:
             davinci
         except:
             log("Error: pydavinci wasn't available. Is it installed correctly via pip?")
-            return False    
-        Resolve = davinci.Resolve()
-        if Resolve._obj:
-            # Identify project or database change - start by assuming no change
-            self.project_was_changed = False
-            self.db_was_changed = False
-            data = { 'project': Resolve.project.name }
-            if self.current_project:
-                if Resolve.project.name != self.current_project.name:
-                    # Project has changed - only coming from name.
-                    self.project_was_changed = True
-                    self.event_resolve.project_change(Resolve.project, data)
-                    self.current_project = Resolve.project
-                    self.clear_render_jobs()
-            else:
-                # First time load of a project
-                self.current_project = Resolve.project
-                self.project_was_changed = False
-                self.event_resolve.project_onload(Resolve.project, data)
-            data = Resolve.project_manager.db
-            if self.current_db:
-                if Resolve.project_manager.db != self.current_db:
-                    # Database has changed
-                    self.db_was_changed = True
-                    self.event_resolve.db_change(Resolve, data)
-                    self.current_db = Resolve.project_manager.db
-                    self.clear_render_jobs()
-            else:
-                # First time load of a db
-                self.current_db = Resolve.project_manager.db
-                self.event_resolve.db_onload(Resolve, data)
-                self.db_was_changed = False
-            # Different jobs behaviour if there was a change
-            if self.project_was_changed or self.db_was_changed:
-                self.render_jobs_first_run = True
-            # Save the rest of the call
-            self.resolve = Resolve
-            return True
-        else:
-            log("Error: pydavinci could not connect to Resolve API. Is Resolve running?")
             return False
+        Resolve = davinci.Resolve()
+        print(Resolve.__dict__)
+        if Resolve._obj is None:
+            log("Resolve API is not available. Ensure Resolve is launched.")
+            return False
+        else:
+            if Resolve._obj is None:
+                log("Resolve API is not available, Resolve is not running anymore.")
+                return False
+            else:
+                return Resolve
+
+    def _get_resolve(self):
+
+        Resolve = self._connect_resolve()
+        if not Resolve:
+            # No valid Resolve object
+            return False
+        
+        # Identify project or database change - start by assuming no change
+        self.project_was_changed = False
+        self.db_was_changed = False
+        data = { 'project': Resolve.project.name }
+        if self.current_project:
+            if Resolve.project.name != self.current_project.name:
+                # Project has changed - only coming from name.
+                self.project_was_changed = True
+                self.event_resolve.project_change(Resolve.project, data)
+                self.current_project = Resolve.project
+                self.clear_render_jobs()
+        else:
+            # First time load of a project
+            self.current_project = Resolve.project
+            self.project_was_changed = False
+            self.event_resolve.project_onload(Resolve.project, data)
+        data = Resolve.project_manager.db
+        if self.current_db:
+            if Resolve.project_manager.db != self.current_db:
+                # Database has changed
+                self.db_was_changed = True
+                self.event_resolve.db_change(Resolve, data)
+                self.current_db = Resolve.project_manager.db
+                self.clear_render_jobs()
+        else:
+            # First time load of a db
+            self.current_db = Resolve.project_manager.db
+            self.event_resolve.db_onload(Resolve, data)
+            self.db_was_changed = False
+        # Different jobs behaviour if there was a change
+        if self.project_was_changed or self.db_was_changed:
+            self.render_jobs_first_run = True
+        # Save the rest of the call
+        self.resolve = Resolve
+        return True
 
     def clear_render_jobs(self):
         self.render_jobs = {}
