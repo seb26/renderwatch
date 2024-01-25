@@ -13,4 +13,4 @@ while True:
 	for job in project.render_jobs:
 		jid = job['JobId']
 		log(job['RenderJobName'], resolve.project.render_status(jid))
-	time.sleep(2)
+	time.sleep(0.5)

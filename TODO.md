@@ -6,39 +6,21 @@
 * Events to add
 	* Loss of Resolve API -- may indicate a program crash or program closed during operation
 
-    * Consider if Events implementation needs to be Asynchronous
-
     * Add an Output Filepath AND Output Directory as a quick param for Actions to use in their messaging
     	* Needs to handle Single clip where there is a Single file path, but also the ` and more` suffix that Resolve uses to indicate multiple clips
-
-
-x Implement Actions backend
 
 * Allow Actions file to be modified - watch for OS filesystem changes and reload
 
 * Implement these Action Steps
-    * Telegram
+    x Telegram
+	* OS notification
     * Email
     * Trigger a shell command or script
     	* Quickest way to allow a file transfer (e.g. Rsync), and so that it takes place as a separate process where user can control it independent of the daemon
 		* And without having a GUI that I have to manage
 
-    * Need some default messaging or statuses - User will want to customise but also they won't want to for Render Status Change! Have a default string that contains exactly what happened in nice words (similar to CLI logging) and put that as a template like `{status_change}`
-
-* Remove DIY logging and implement Python Logging library
-
-* Implement config
-    * Should have a Yamale schema but make it quite flexible at first
-    * Add option for Time Interval for polling the Resolve API
-
-* Feature idea - Also determine an Elapsed time? - take job completed timestamp and minus from earliest(job history) timestamp
-
-* Change RenderJob update() to be Asynchronous
-	* This will help a follow-up API call to be made, if we get surprising info from an API call and need to make another one
-	* One important reason - Allow a follow up call for Render Statuses, if one of the Renders hits 'Completed' - we will then learn immediately if another job was queued straight after
-
-* Perform another API poll after receiving news that a job has completed
-    * Might require Asynchronicity since that request for another API poll will come from inside update()
+x Change RenderJob update() to be Asynchronous
+	* Double check behaviour after two jobs are queued and one finishes - 
 
 * FAILED jobs
     * Current decision:
@@ -58,6 +40,7 @@ x Implement Actions backend
 ## R&D within DaVinci Resolve
 x Do a test to see if you can poll JobStatus every 0.5sec - how frequently does the API give you a CompletionPercentage?
 	* Done, it seems to only report 0/25/50/75/100% intervals and the time remaining in miliseconds is a big whole number rounded to hundreds
+	* 24/01/2024 - Nope, it definitely reports other percent intervals. However it seems to only give a new value every 10 seconds roughly.
 
 * Test what jobs are like when they are QUEUED
 	* 19/01/2024 - There's nothing different about a Job that is Queued or not. They are both "Ready"

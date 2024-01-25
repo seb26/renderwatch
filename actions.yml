@@ -16,10 +16,11 @@ actions:
     enabled: true
     triggered_by:
       - render_job_started
+      - render_job_progress_initial_update
     steps:
       - telegram:
           chat_id: -4154302054
-          message: "🔂 {name}: {timeline_name} - {status} @ {timestamp_short}\nETA: {time_elapsed}"
+          message: '🔂 {name}: {timeline_name} - {status} @ {timestamp_short}{line_time_remaining}'
 
   - name: Job finishes OK
     enabled: true
@@ -28,7 +29,7 @@ actions:
     steps:
       - telegram:
           chat_id: -4154302054
-          message: "✅ {name}: {timeline_name} - {status} @ {timestamp_short}\nRender time was: {time_elapsed}"
+          message: "✅ {name}: {timeline_name} - {status} @ {timestamp_short} {line_time_elapsed} {line_average_fps}"
 
   - name: Job fails
     enabled: true
@@ -38,4 +39,4 @@ actions:
     steps:
       - telegram:
           chat_id: -4154302054
-          message: "⚠️ {name}: {timeline_name} - {status} @ {timestamp_short}\nJob completion was: {completion_percent}"
+          message: "⚠️ {name}: {timeline_name} - {status} @ {timestamp_short} {line_completion_percent}"
