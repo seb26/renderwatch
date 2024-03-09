@@ -222,3 +222,4 @@ pip-selfcheck.json
 
 # Seb
 logs/
+.history/

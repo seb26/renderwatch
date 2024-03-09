@@ -12,20 +12,22 @@ handlers:
     formatter: format_console
     stream: ext://sys.stdout
   logfile:
-    class: logging.handlers.RotatingFileHandler
+    class: logging.handlers.TimedRotatingFileHandler
     level: DEBUG
     formatter: format_logfile
     filename: logs/renderwatch.log
-    maxBytes: 5242880
-    backupCount: 5
+    when: D
+    interval: 1
+    backupCount: 7
+    delay: True
     encoding: 'utf-8'
 loggers:
   renderwatch:
     level: DEBUG
     handlers: [console, logfile]
     propagate: no
-  renderwatch_resolve_events:
-    level: INFO
+  renderwatch.events:
+    level: DEBUG
     handlers: [console, logfile]
     propagate: no
 root:
