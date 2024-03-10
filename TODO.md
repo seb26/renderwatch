@@ -1,5 +1,7 @@
 # TODO
 
+* ***BIG BUG*** currently if Resolve is not open at the time of launching renderwatch_daemon, it just sits there blank! And nothing happens. Including if you open Resolve afterward.
+
 * Make it clear to user that this daemon only works for the currently opened Project
 	* Perhaps a way to nominate other projects for Daemon to watch?
 

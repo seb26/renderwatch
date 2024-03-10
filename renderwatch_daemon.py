@@ -1,5 +1,6 @@
-from renderwatch.actions import Action
+from renderwatch.actions import UserAction
 from renderwatch.event import InternalEvents, ResolveEvents
+from renderwatch.exceptions import UserInvalidAction, UserInvalidStep
 from renderwatch.renderjob import RenderJob
 
 import asyncio
@@ -55,15 +56,12 @@ class RenderWatch:
 
         # Parse actions
         self.actions = []
-        self._read_actions()
+        self._validate_user_actions()
 
-    def _read_actions(self):
-        # Validation schema
+    def _validate_user_actions(self):
         actions_schema = yamale.make_schema(self.filepath_actions_schema)
-        # Open actions
         actions_raw_text = open(self.filepath_user_actions, 'r', encoding='utf-8').read()
         actions_raw = yamale.make_data(content=actions_raw_text)
-        # Validate
         try:
             yamale.validate(actions_schema, actions_raw)
             logger.debug('Actions validated OK 👍 File: %s', self.filepath_actions_schema)
@@ -84,8 +82,19 @@ class RenderWatch:
             logger.error('Actions block was unreadable: %s', actions_raw)
             return False
         # Finish by creating new Action objects
-        for definition in actions:
-            self.actions.append( Action(definition, renderwatch=self) )
+        for index, definition in enumerate(actions):
+            try:
+                action = UserAction(
+                    renderwatch = self,
+                    index = index + 1, # order it appeared in user's actions.yml
+                    enabled = definition['enabled'],
+                    name = definition['name'],
+                    steps = definition['steps'],
+                    triggers = definition['triggered_by']
+                )
+                self.actions.append(action)
+            except UserInvalidAction:
+                logger.error(f"This action was invalid: index {index}: {definition['name']}")
 
     async def _connect_resolve(self):
         try:
@@ -204,20 +213,21 @@ class RenderWatch:
         time.sleep(0.5)
         await self.update_render_jobs()
 
-    def format_message(self, text_to_format, job=None):
+    def format_message(
+        self,
+        text_to_format: str,
+        job: RenderJob=None
+    ):
         output = False
         try:
             output = text_to_format.format(**job.__dict__)
         except KeyError as e:
-            logger.error("format_message(): did not recognise this param: %s. Check your actions.yml", e)
-        if not output or not isinstance(output, str):
-            logger.error("format_message(): did not create a valid output message, have a look at it: \n%s",output)
+            self.log.error(f"format_message(): did not recognise this param: {e}. Check your actions.yml")
         return output
-
 
 # Daemon
 async def main():
-    logger.debug('Welcome. Python:', sys.version, locale.getdefaultlocale())
+    logger.debug('Welcome. Python:', sys.version, locale.getlocale())
     renderwatch = RenderWatch()
     while True:
         await renderwatch.update_render_jobs()

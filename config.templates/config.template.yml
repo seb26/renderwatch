@@ -5,7 +5,7 @@ renderwatch:
     telegram:
       token_plaintext: ''
       token_filepath: ''
-      token_environment_variable_name: 'TELEGRAM_SEBNOTIFBOT_API_KEY'
+      token_env_var: 'TELEGRAM_SEBNOTIFBOT_API_KEY'
 
 renderwatch_daemon:
   # Time (seconds) to poll the Resolve API for changes
