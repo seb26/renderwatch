@@ -9,26 +9,34 @@ import logging
 import logging.config
 import time
 import sys
+from os import path
 
-import yaml
+import platformdirs
 from pydavinci import davinci
+import yaml
 import yamale
 
-# Globals
-RENDERWATCH_DEFAULT_API_POLL_TIME = 2 
-RENDERWATCH_DEFAULT_CONFIG_FILEPATH = 'config.yml'
-RENDERWATCH_DEFAULT_ACTIONS_FILEPATH = 'actions.yml'
 
 logger = logging.getLogger(__name__)
 
 # Program
 class RenderWatch:
-    def __init__(self,
-        config_filepath=RENDERWATCH_DEFAULT_CONFIG_FILEPATH,
-        actions_filepath=RENDERWATCH_DEFAULT_ACTIONS_FILEPATH ):
-        # Set up logging first
-        log_config_yaml = yaml.safe_load( open('./logging.yml', 'r', encoding='utf-8') )
-        logging.config.dictConfig(log_config_yaml)
+    def __init__(self):
+        # Inside app dist
+        self.app_dirpath = path.abspath(path.dirname(__file__))
+        self.filepath_config_logging = path.join(self.app_dirpath, 'renderwatch/logging.yml')
+        self.filepath_actions_schema = path.join(self.app_dirpath, 'renderwatch/actions.schema.yml')
+        # In System OS Application Support Directory/renderwatch
+        self.dirpath_user_config_dir = platformdirs.user_data_dir(appname='renderwatch', ensure_exists=True)
+        self.dirpath_user_config_log_dir = platformdirs.user_data_dir(appname='renderwatch/logs', ensure_exists=True)
+        self.filepath_user_config = path.join(self.dirpath_user_config_dir, 'config/config.yml')
+        self.filepath_user_actions = path.join(self.dirpath_user_config_dir, 'config/actions.yml')
+        # Import logging config
+        with open(self.filepath_config_logging, 'r', encoding='utf-8') as f:
+            log_config_yaml = yaml.safe_load(f)
+            # TODO: improve this honestly
+            log_config_yaml['handlers']['logfile']['filename'] = path.join(self.dirpath_user_config_log_dir, 'renderwatch.log')
+            logging.config.dictConfig(log_config_yaml)
 
         self.event_internal = InternalEvents()
         self.event_resolve = ResolveEvents()
@@ -41,13 +49,43 @@ class RenderWatch:
         self.render_jobs_first_run = True
 
         # Parse config
-        stream = open(config_filepath, 'r')
-        config = yaml.safe_load(stream)
+        with open(self.filepath_user_config, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
         self.config = config
 
         # Parse actions
         self.actions = []
-        self.read_actions(actions_filepath)
+        self._read_actions()
+
+    def _read_actions(self):
+        # Validation schema
+        actions_schema = yamale.make_schema(self.filepath_actions_schema)
+        # Open actions
+        actions_raw_text = open(self.filepath_user_actions, 'r', encoding='utf-8').read()
+        actions_raw = yamale.make_data(content=actions_raw_text)
+        # Validate
+        try:
+            yamale.validate(actions_schema, actions_raw)
+            logger.debug('Actions validated OK 👍 File: %s', self.filepath_actions_schema)
+        except Exception as e:
+            logger.error(e)
+            return False
+        # Workaround Yamale which wraps its parsing in a list and a tuple
+        # https://github.com/23andMe/Yamale/blob/master/yamale/yamale.py:32 @ ca60752
+        actions = False
+        if isinstance(actions_raw, list):
+            if len(actions_raw) > 0:
+                if isinstance(actions_raw[0], tuple):
+                    if actions_raw[0][0] is not None:
+                        # And then the heading for actions, which is part of our yaml schema just for readability
+                        if 'actions' in actions_raw[0][0]:
+                            actions = actions_raw[0][0]['actions']
+        if not actions:
+            logger.error('Actions block was unreadable: %s', actions_raw)
+            return False
+        # Finish by creating new Action objects
+        for definition in actions:
+            self.actions.append( Action(definition, renderwatch=self) )
 
     async def _connect_resolve(self):
         try:
@@ -165,36 +203,6 @@ class RenderWatch:
     async def follow_up_update_render_jobs(self):
         time.sleep(0.5)
         await self.update_render_jobs()
-        
-    def read_actions(self, actions_filepath=RENDERWATCH_DEFAULT_ACTIONS_FILEPATH):
-        # Validation schema
-        actions_schema = yamale.make_schema('./schema/actions.yml')
-        # Open actions
-        actions_raw_text = open(actions_filepath, 'r', encoding='utf-8').read()
-        actions_raw = yamale.make_data(content=actions_raw_text)
-        # Validate
-        try:
-            yamale.validate(actions_schema, actions_raw)
-            logger.debug('Actions validated OK 👍 File: %s', actions_filepath)
-        except Exception as e:
-            logger.error(e)
-            return False
-        # Workaround Yamale which wraps its parsing in a list and a tuple
-        # https://github.com/23andMe/Yamale/blob/master/yamale/yamale.py:32 @ ca60752
-        actions = False
-        if isinstance(actions_raw, list):
-            if len(actions_raw) > 0:
-                if isinstance(actions_raw[0], tuple):
-                    if actions_raw[0][0] is not None:
-                        # And then the heading for actions, which is part of our yaml schema just for readability
-                        if 'actions' in actions_raw[0][0]:
-                            actions = actions_raw[0][0]['actions']
-        if not actions:
-            logger.error('Actions block was unreadable: %s', actions_raw)
-            return False
-        # Finish by creating new Action objects
-        for definition in actions:
-            self.actions.append( Action(definition, renderwatch=self) )
 
     def format_message(self, text_to_format, job=None):
         output = False
