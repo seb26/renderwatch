@@ -1,7 +1,9 @@
+from renderwatch.renderjob import RenderJob
 from renderwatch.step import Step
 
 import logging
-import os
+from os import getenv
+from pprint import pprint
 
 import requests
 
@@ -17,16 +19,20 @@ class Telegram(Step):
         self.token = None
 
     def __validate__(
-            self,
-            token_env_var: str = None,
-            token_filepath: str = None,
-            token_plaintext: str = None,
-        ) -> bool:
+        self,
+        token_env_var: str = None,
+        token_filepath: str = None,
+        token_plaintext: str = None,
+        force: bool = False,
+    ):
+        if self.token and not force:
+            # Already have a good token
+            return True
         # Locate a token
         def _search_tokens():
             # 1. Using OS environment variables accessible to Python
             if token_env_var:
-                env_var = os.environ[token_env_var]
+                env_var = getenv(token_env_var)
                 if env_var and isinstance(env_var, str):
                     yield ( 'token_env_var', env_var )
             # 2. Read a file that user specifies
@@ -69,17 +75,17 @@ class Telegram(Step):
     @Step.action('send_message')
     def send_message(
         context,
-        job = None,
+        *args,
         chat_id: int=None,
         message: str=None,
+        **kwargs,
     ):
         # Format the text of the message
-        message_formatted = context['renderwatch'].format_message(
+        message_formatted = context.renderwatch.format_message_from_renderjob(
             message,
-            job = job
+            kwargs['job'],
         )
         # Send
-        Telegram.send_message(context.token, chat_id, message)
         api_url = f"https://api.telegram.org/bot{context.token}/sendMessage"
         request = requests.get(
             api_url,
@@ -88,4 +94,5 @@ class Telegram(Step):
                 'text': message_formatted,
             },
         )
-        logger.debug(f'{request}')
+        if not request.ok:
+            logger.error(f'{request} - {request.text}')

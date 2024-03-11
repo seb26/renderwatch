@@ -18,7 +18,7 @@ import yaml
 import yamale
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('renderwatch.daemon')
 
 # Program
 class RenderWatch:
@@ -56,6 +56,7 @@ class RenderWatch:
 
         # Parse actions
         self.actions = []
+        self.validated_user_steps = {}
         self._validate_user_actions()
 
     def _validate_user_actions(self):
@@ -82,6 +83,7 @@ class RenderWatch:
             logger.error('Actions block was unreadable: %s', actions_raw)
             return False
         # Finish by creating new Action objects
+        count_successful_user_actions = 0
         for index, definition in enumerate(actions):
             try:
                 action = UserAction(
@@ -93,8 +95,10 @@ class RenderWatch:
                     triggers = definition['triggered_by']
                 )
                 self.actions.append(action)
+                count_successful_user_actions += 1
             except UserInvalidAction:
                 logger.error(f"This action was invalid: index {index}: {definition['name']}")
+        logger.debug(f"Parsed {count_successful_user_actions} user actions successfully.")
 
     async def _connect_resolve(self):
         try:
@@ -178,8 +182,8 @@ class RenderWatch:
         # Query the API
         await self._get_resolve()
         if not self.resolve:
-            logger.error('update_render_jobs(): No Resolve available, skipping.')
-            return False
+            logger.error('update_render_jobs(): No connection to Resolve available - quitting self. Launch Resolve and run again.')
+            raise SystemExit
         # Mark the jobs with time that this call was made
         time_collected = datetime.datetime.now()
         timestamp = int(time_collected.timestamp())
@@ -213,25 +217,36 @@ class RenderWatch:
         time.sleep(0.5)
         await self.update_render_jobs()
 
-    def format_message(
+    def format_message_from_renderjob(
         self,
         text_to_format: str,
-        job: RenderJob=None
+        job: RenderJob,
     ):
         output = False
         try:
             output = text_to_format.format(**job.__dict__)
         except KeyError as e:
-            self.log.error(f"format_message(): did not recognise this param: {e}. Check your actions.yml")
+            logger.error(f"format_message(): did not recognise this param: {e}. Check your actions.yml")
         return output
 
 # Daemon
 async def main():
-    logger.debug('Welcome. Python:', sys.version, locale.getlocale())
+    print('Welcome. Python:', sys.version, locale.getlocale())
     renderwatch = RenderWatch()
-    while True:
-        await renderwatch.update_render_jobs()
-        time.sleep(renderwatch.config['renderwatch_daemon']['API_poll_time'])
+    run = True
+    logger.debug('Connecting to Resolve for first time...')
+    try:
+        while run:
+            await renderwatch.update_render_jobs()
+            time.sleep(renderwatch.config['renderwatch_daemon']['API_poll_time'])
+            # DEBUG: renderwatch.event_resolve.render_job_started()
+    except SystemExit:
+        sys.exit(0)
+    except KeyboardInterrupt:
+        sys.exit(0)
+    except Exception as e:
+        logger.debug(e, exc_info=1)
+        sys.exit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())

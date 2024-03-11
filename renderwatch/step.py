@@ -52,6 +52,7 @@ class Step(object):
         **kwargs
     ):
         return func(
+            self,
             *args,
             **kwargs,
         )

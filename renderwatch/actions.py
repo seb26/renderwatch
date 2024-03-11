@@ -58,11 +58,17 @@ class UserAction(object):
             user_config = self.renderwatch.config['renderwatch']['steps'][user_step_type]
             # Initialise a Step for it
             step_class = Steps[user_step_type].value
-            step_instance = step_class()
-            # Validate with the Step's own validation before proceeding
-            if not step_instance.__validate__(**user_config):
-                logger.warning(f"Action {self.index} ({self.name}), Step {user_step_index} ({user_step_type}) - skipping, it didn't validate properly. Check you have all the correct params for this kind of Step.")
-                continue
+            # Check if we have saved a validated instance, or create one if not
+            if user_step_type in self.renderwatch.validated_user_steps.keys():
+                step_instance = deepcopy(self.renderwatch.validated_user_steps[user_step_type])
+            else:
+                step_instance = step_class()
+                # Validate with the Step's own validation before proceeding
+                if step_instance.__validate__(**user_config):
+                    self.renderwatch.validated_user_steps[user_step_type] = step_instance
+                else:
+                    logger.warning(f"Action {self.index} ({self.name}), Step {user_step_index} ({user_step_type}) - skipping, it didn't validate properly. Check you have all the correct params for this kind of Step.")
+                    continue
             # Confirm the user specified a Keyword Action
             if not 'action' in user_settings:
                 logger.warning(f"Action {self.index} ({self.name}), Step {user_step_index}: an action keyword was not specified for this Step ({user_step_type}). Check spelling or help for list of steps.")
