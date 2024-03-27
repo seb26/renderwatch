@@ -1,17 +1,14 @@
 # TODO
 
-* ***BIG BUG*** currently if Resolve is not open at the time of launching renderwatch_daemon, it just sits there blank! And nothing happens. Including if you open Resolve afterward.
-
-* Make it clear to user that this daemon only works for the currently opened Project
-	* Perhaps a way to nominate other projects for Daemon to watch?
-
 * Events to add
 	* Loss of Resolve API -- may indicate a program crash or program closed during operation
 
     * Add an Output Filepath AND Output Directory as a quick param for Actions to use in their messaging
     	* Needs to handle Single clip where there is a Single file path, but also the ` and more` suffix that Resolve uses to indicate multiple clips
 
-* Allow Actions file to be modified - watch for OS filesystem changes and reload
+	* Add an event fire for when a User Step is fired - so that we can see in the log when users own steps are occurring
+
+* Allow Actions file to be modified - watch for OS filesystem change and reload
 
 * Implement these Action Steps
     x Telegram
@@ -20,6 +17,11 @@
     * Trigger a shell command or script
     	* Quickest way to allow a file transfer (e.g. Rsync), and so that it takes place as a separate process where user can control it independent of the daemon
 		* And without having a GUI that I have to manage
+
+	* Check if render output is COMPLETE in file duration
+		* Render job duration, Timeline duration
+		* Output folder -> ffmpeg -> frame count
+		* How to determine output folder when there are many wildcards used
 
 x Change RenderJob update() to be Asynchronous
 	* Double check behaviour after two jobs are queued and one finishes - 
@@ -37,6 +39,9 @@ x Change RenderJob update() to be Asynchronous
             * Better than sending Keystrokes to a screen blindly at some interval
     	* Consider using Osascript to send Fn+Return keystroke to 'OK'
         	* Be smart - after that keystroke sent, watch for an Failed event and if there is none in a reasonable time period, be cautious about how many further keystrokes you send 
+
+* Make it clear to user that this daemon only works for the currently opened Project
+	* Perhaps a way to nominate other projects for Daemon to watch?
 
 
 ## R&D within DaVinci Resolve

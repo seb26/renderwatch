@@ -32,8 +32,7 @@ class RenderJob:
         time_collected = datetime.datetime.now()
         self.last_touched = False
 
-        jid = job_dump['JobId']
-        self.id = jid
+        self.id = job_dump['JobId']
         await self.update(job_dump, render_status_info, time_collected)
         return self
 

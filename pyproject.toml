@@ -1,6 +1,6 @@
 [project]
 name = "renderwatch"
-version = "0.2"
+version = "0.3"
 description = "A utility that watches render jobs in DaVinci Resolve and executes notifications and other tasks as they complete"
 requires-python = ">= 3.10"
 

@@ -1,5 +1,5 @@
 from renderwatch.actions import UserAction
-from renderwatch.event import InternalEvents, ResolveEvents
+from renderwatch.event import InternalEvents, ResolveEvents, UserEvents
 from renderwatch.exceptions import UserInvalidAction, UserInvalidStep
 from renderwatch.renderjob import RenderJob
 
@@ -41,6 +41,7 @@ class RenderWatch:
 
         self.event_internal = InternalEvents()
         self.event_resolve = ResolveEvents()
+        self.event_user = UserEvents()
 
         self.resolve = False
         self.current_project = { }
@@ -56,7 +57,7 @@ class RenderWatch:
 
         # Parse actions
         self.actions = []
-        self.validated_user_steps = {}
+        self._validated_user_steps = {}
         self._validate_user_actions()
 
     def _validate_user_actions(self):
@@ -239,7 +240,8 @@ async def main():
         while run:
             await renderwatch.update_render_jobs()
             time.sleep(renderwatch.config['renderwatch_daemon']['API_poll_time'])
-            # DEBUG: renderwatch.event_resolve.render_job_started()
+            # DEBUG:
+            # renderwatch.event_resolve.render_job_started()
     except SystemExit:
         sys.exit(0)
     except KeyboardInterrupt:

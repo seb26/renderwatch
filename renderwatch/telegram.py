@@ -1,4 +1,3 @@
-from renderwatch.renderjob import RenderJob
 from renderwatch.step import Step
 
 import logging
@@ -10,10 +9,6 @@ import requests
 logger = logging.getLogger(__name__)
 
 class Telegram(Step):
-    required = {
-        'send_message': [ 'chat_id', 'message', ],
-    }
-
     def __init__(self):
         super(Telegram, self).__init__()
         self.token = None
@@ -72,12 +67,13 @@ class Telegram(Step):
         logger.warning(f"check_token_is_valid - False - request {request.text}")
         return False
 
-    @Step.action('send_message')
+    @Step.action('send_message', params=['chat_id', 'message'])
     def send_message(
+        self,
         context,
         *args,
-        chat_id: int=None,
-        message: str=None,
+        chat_id: int,
+        message: str,
         **kwargs,
     ):
         # Format the text of the message

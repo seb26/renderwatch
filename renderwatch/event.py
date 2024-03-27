@@ -55,3 +55,8 @@ class InternalEvents(BaseEventGroup):
         'action_step_fired',
         'action_step_telegram_message_sent',
     )
+
+class UserEvents(BaseEventGroup):
+    group_name = 'user'
+    # no events to define - they are dynamically defined
+    __events__ = set()

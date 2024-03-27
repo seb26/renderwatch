@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class Step(object):
     methods = {}
-    required = {}
+    required_params = {}
     renderwatch = None
 
     def __init__(
@@ -27,35 +27,43 @@ class Step(object):
         self.trigger = trigger
     
     @classmethod
-    def action(self, action_keyword: str):
+    def action(self, action_keyword: str, *args, params: list = []):
         def decorator(func):
-            self._register_method(action_keyword, func)
-            return partial(
+            instance = partial(
                 func,
                 self,
             )
+            self._register_method(action_keyword, instance, params)
+            return instance
         return decorator
 
     @classmethod
     def _register_method(
         self,
         action_keyword: str,
-        method: Callable[[str], Any]
+        method: Callable[[str], Any],
+        params: list,
     ):
         self.methods[action_keyword] = method
+        self.required_params[action_keyword] = params
 
     @classmethod
     def run(
         self,
         func,
         *args,
-        **kwargs
+        callback_pre: Callable,
+        callback_post: Callable,
+        **kwargs,
     ):
-        return func(
+        callback_pre()
+        result = func(
             self,
             *args,
             **kwargs,
         )
+        callback_post()
+        return result
 
     def get_method_from_keyword(self, action_keyword: str):
         """Sets the Step's `action` keyword and returns the method connected to it"""
