@@ -19,7 +19,8 @@ actions:
       - render_job_progress_initial_update
     steps:
       - telegram:
-          chat_id: -4154302054
+          action: send_message
+          chat_id: -000000000 # Fill this in
           message: '🔂 {name}: {timeline_name} - {status} @ {timestamp_short}{line_time_remaining}'
 
   - name: Job finishes OK
@@ -28,7 +29,8 @@ actions:
       - render_job_completed
     steps:
       - telegram:
-          chat_id: -4154302054
+          action: send_message
+          chat_id: 
           message: "✅ {name}: {timeline_name} - {status} @ {timestamp_short} {line_time_elapsed} {line_average_fps}"
 
   - name: Job fails
@@ -38,5 +40,6 @@ actions:
       - render_job_cancelled
     steps:
       - telegram:
-          chat_id: -4154302054
+          action: send_message
+          chat_id: 
           message: "⚠️ {name}: {timeline_name} - {status} @ {timestamp_short} {line_completion_percent}"

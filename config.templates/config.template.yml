@@ -3,16 +3,11 @@
 renderwatch:
   steps:
     telegram:
-      token_plaintext: ''
-      token_filepath: ''
-      token_env_var: 'TELEGRAM_SEBNOTIFBOT_API_KEY'
+      token_plaintext: 
+      token_filepath: 
+      token_env_var: 
 
 renderwatch_daemon:
   # Time (seconds) to poll the Resolve API for changes
   # Default: 2
   API_poll_time: 2
-
-  # Logging
-  logs:
-    # Level of logging verbosity
-    level: 'normal'

@@ -1,11 +1,10 @@
+from .exceptions import UserInvalidAction
 from .step import Step
 from .steps import Steps
-
-import itertools
-import logging
-import traceback
 from copy import deepcopy
 from functools import partial
+import itertools
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,10 @@ class UserAction(object):
         self.steps = {}
         if self.enabled:
             logger.debug(f"Action {self.index} ({self.name}): evaluating user's input..")
-            self._init(steps, triggers)
+            count_valid_steps = self._init(steps, triggers)
+            logger.debug(f"Action {self.index} ({self.name}): found {count_valid_steps} valid steps for this action.")
+            if count_valid_steps == 0:
+                raise UserInvalidAction
         else:
             logger.debug(f"Action {self.index} ({self.name}): disabled.")
 
@@ -46,6 +48,7 @@ class UserAction(object):
         except Exception as e:
             logger.error(f"Action {self.index} ({self.name}): : could not parse steps. See below exception:")
             logger.debug(e, exc_info=1)
+        count_valid_steps = 0
         for user_step_index, user_step_type, user_settings in step_entries:
             # Validate the STEP TYPE NAME
             if not user_step_type in Steps.__members__.keys():
@@ -69,7 +72,7 @@ class UserAction(object):
                 if step_instance.__validate__(**user_config):
                     self.renderwatch._validated_user_steps[user_step_type] = step_instance
                 else:
-                    logger.warning(f"Action {self.index} ({self.name}), Step {user_step_index} ({user_step_type}) - skipping, it didn't validate properly. Check you have all the correct params for this kind of Step.")
+                    logger.warning(f"Action {self.index} ({self.name}), Step {user_step_index} ({user_step_type}) - skipping, it didn't validate properly. Check you have all the correct config params for this kind of Step in config.yml.")
                     continue
             # Confirm the user specified a Keyword Action
             if not 'action' in user_settings:
@@ -79,6 +82,7 @@ class UserAction(object):
             if not user_settings['action'] in step_instance.methods:
                 logger.warning(f"Action {self.index} ({self.name}), Step {user_step_index}: '{user_settings['action']}' is not a recognised action for this Step ({user_step_type}). Check spelling or help for list of steps.")
                 continue
+            count_valid_steps += 1
             # Get that corresponding method
             step_action_keyword = user_settings.pop('action')
             step_method = step_instance.get_method_from_keyword(step_action_keyword)
@@ -117,7 +121,8 @@ class UserAction(object):
                 else:
                     self.steps[step_instance.step_type][trigger] = [ step_instance ]
             logger.info(f"Action {self.index} ({self.name}), Step {user_step_index} ({user_step_type}): added successfully.")
-
+        return count_valid_steps
+    
     def _create_sub_handler(
         self,
         signature: str,

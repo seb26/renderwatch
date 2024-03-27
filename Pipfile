@@ -1,0 +1,32 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+certifi = "==2023.11.17"
+charset-normalizer = "==3.3.2"
+dictdiffer = "==0.9.0"
+distlib = "==0.3.8"
+events = "==0.5"
+filelock = "==3.13.1"
+humanize = "==4.9.0"
+idna = "==3.6"
+loguru = "==0.6.0"
+pipenv = "==2023.12.1"
+platformdirs = "==4.2.0"
+pydantic = "==1.9.0"
+pydavinci-18 = {ref = "51fc6708b6295fe02d093094c0f171614ae7c8aa", git = "git+https://github.com/in03/pydavinci.git"}
+pyyaml = "==6.0.1"
+requests = "==2.31.0"
+typing-extensions = "==4.1.1"
+urllib3 = "==2.1.0"
+virtualenv = "==20.25.1"
+yamale = "==5.0.0"
+importlib-metadata = "*"
+renderwatch = {file = ".", editable = true}
+
+[dev-packages]
+
+[requires]
+python_version = ">3.10"

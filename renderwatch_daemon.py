@@ -3,20 +3,20 @@ from renderwatch.event import InternalEvents, ResolveEvents, UserEvents
 from renderwatch.exceptions import UserInvalidAction, UserInvalidStep
 from renderwatch.renderjob import RenderJob
 
+from os import makedirs, path
+from pydavinci import davinci
 import asyncio
 import datetime
+import importlib_metadata
 import locale
 import logging
 import logging.config
-import time
-import sys
-from os import path
-
 import platformdirs
-from pydavinci import davinci
-import yaml
+import shutil
+import sys
+import time
 import yamale
-
+import yaml
 
 logger = logging.getLogger('renderwatch.daemon')
 
@@ -25,19 +25,37 @@ class RenderWatch:
     def __init__(self):
         # Inside app dist
         self.app_dirpath = path.abspath(path.dirname(__file__))
+        logger.debug(f'App dirpath: {self.app_dirpath}')
         self.filepath_config_logging = path.join(self.app_dirpath, 'renderwatch/logging.yml')
         self.filepath_actions_schema = path.join(self.app_dirpath, 'renderwatch/actions.schema.yml')
+        self.filepath_template_config = path.join(self.app_dirpath, 'config.templates/config.template.yml')
+        self.filepath_template_actions = path.join(self.app_dirpath, 'config.templates/actions.template.yml')
         # In System OS Application Support Directory/renderwatch
         self.dirpath_user_config_dir = platformdirs.user_data_dir(appname='renderwatch', ensure_exists=True)
         self.dirpath_user_config_log_dir = platformdirs.user_data_dir(appname='renderwatch/logs', ensure_exists=True)
-        self.filepath_user_config = path.join(self.dirpath_user_config_dir, 'config/config.yml')
-        self.filepath_user_actions = path.join(self.dirpath_user_config_dir, 'config/actions.yml')
+        self.filepath_user_config = path.join(self.dirpath_user_config_dir, 'config.yml')
+        self.filepath_user_actions = path.join(self.dirpath_user_config_dir, 'actions.yml')
         # Import logging config
         with open(self.filepath_config_logging, 'r', encoding='utf-8') as f:
             log_config_yaml = yaml.safe_load(f)
             # TODO: improve this honestly
             log_config_yaml['handlers']['logfile']['filename'] = path.join(self.dirpath_user_config_log_dir, 'renderwatch.log')
             logging.config.dictConfig(log_config_yaml)
+        # Write templates if user does not have any
+        user_started_from_scratch = False
+        if not path.isfile(self.filepath_user_config):
+            makedirs( path.dirname(self.filepath_user_config), exist_ok=True )
+            shutil.copy(self.filepath_template_config, self.filepath_user_config)
+            logger.info(f'No config file found - Created a new one at path: {self.filepath_user_config}')
+            user_started_from_scratch = True
+        if not path.isfile(self.filepath_user_actions):
+            makedirs( path.dirname(self.filepath_user_actions), exist_ok=True )
+            shutil.copy(self.filepath_template_actions, self.filepath_user_actions)
+            logger.info(f'No config file found - Created a new one at path: {self.filepath_user_actions}')
+            user_started_from_scratch = True
+        if user_started_from_scratch:
+            logger.info(f'Edit the config.yml and actions.yml. Then run renderwatch_daemon again.')
+            raise SystemExit
 
         self.event_internal = InternalEvents()
         self.event_resolve = ResolveEvents()
@@ -100,6 +118,9 @@ class RenderWatch:
             except UserInvalidAction:
                 logger.error(f"This action was invalid: index {index}: {definition['name']}")
         logger.debug(f"Parsed {count_successful_user_actions} user actions successfully.")
+        if count_successful_user_actions == 0:
+            logger.warning(f"No valid user actions specified. Edit actions.yml and ensure everything is specified correctly. Refer to log above to identify errors.")
+            raise SystemExit
 
     async def _connect_resolve(self):
         try:
@@ -232,7 +253,8 @@ class RenderWatch:
 
 # Daemon
 async def main():
-    print('Welcome. Python:', sys.version, locale.getlocale())
+    print(f"renderwatch_daemon - v{importlib_metadata.version('renderwatch')}")
+    print('Python:', sys.version, locale.getlocale())
     renderwatch = RenderWatch()
     run = True
     logger.debug('Connecting to Resolve for first time...')
@@ -240,8 +262,6 @@ async def main():
         while run:
             await renderwatch.update_render_jobs()
             time.sleep(renderwatch.config['renderwatch_daemon']['API_poll_time'])
-            # DEBUG:
-            # renderwatch.event_resolve.render_job_started()
     except SystemExit:
         sys.exit(0)
     except KeyboardInterrupt:
