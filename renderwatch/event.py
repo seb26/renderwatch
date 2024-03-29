@@ -20,7 +20,11 @@ class BaseEventGroup(Events):
             handler += partial(self.debug_data, event_name)
 
     def log(self, event_name, *args, **kwargs):
-        self.logger.info(f"{event_name}")
+        if kwargs.get('job'):
+            self.logger.info(f"{kwargs['job'].id[:8]} | {event_name}")
+        else:
+            self.logger.info(f"{event_name}")
+            
     
     def debug_data(self, event_name, *args, **kwargs):
         if 'data' in kwargs:

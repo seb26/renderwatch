@@ -185,7 +185,7 @@ class RenderWatch:
         delete_these_jobs = []
         for jid, job in self.render_jobs.items():
             if job.last_touched < timestamp:
-                self.event_resolve.render_job_removed()
+                self.event_resolve.render_job_removed(job=job)
                 # Mark for deletion
                 delete_these_jobs.append(jid)
         # Apply deletion from our records
